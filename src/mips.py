@@ -20,7 +20,7 @@ def distance(id1, id2, nodes):
 
 def load_data(nodeData, edgeData, distanceMatrixData, flowData):
     # 基準データを読み込み
-    N, E, D, F = {}, {}, {}, {}
+    N, E, E_id, D, F = {}, {}, {}, {},{}
 
     df_node = pd.read_csv(nodeData)
     df_edge = pd.read_csv(edgeData)
@@ -31,9 +31,10 @@ def load_data(nodeData, edgeData, distanceMatrixData, flowData):
     for v in df_node.values:
         N[v[0]] = (v[2], v[3], v[4])
 
-    # source,target,weight,path
+    # edge_id, source,target,weight,path
     for v in df_edge.values:
-        E[(v[0], v[1])] = v[2]
+        E[(v[1], v[2])] = v[3]
+        E_id[(v[1], v[2])] = v[0]
 
     # from,to,value,origin_lon,origin_lat,destination_lon,destination_lat
     for v in df_flow.values:
@@ -44,7 +45,7 @@ def load_data(nodeData, edgeData, distanceMatrixData, flowData):
 
     G = nx.from_pandas_edgelist(df_edge, 'source', 'target', 'weight')
 
-    return N, E, D, F, G
+    return N, E, D, F, G, E_id
 
 
 
@@ -92,32 +93,6 @@ def create_od_flow(points:dict, pattern="many2one", h=0):
 
     return od_flow
 
-def create_edges(points:dict):
-    edges = {}
-    tri = Delaunay(list(points.values()))
-    for t in tri.simplices:
-        t = np.sort(t)
-        t_edge1 = (t[0], t[1])
-        t_edge2 = (t[1], t[2])
-        t_edge3 = (t[0], t[2])
-
-        if t_edge1 not in edges:
-            d = distance(t_edge1[0], t_edge1[1], nodes)
-            edges[t_edge1] = d
-            edges[(t_edge1[1], t_edge1[0])] = d
-        if t_edge2 not in edges:
-            d = distance(t_edge2[0], t_edge2[1], nodes)
-            edges[t_edge2] = d
-            edges[(t_edge2[1], t_edge2[0])] = d
-        if t_edge3 not in edges:
-            d = distance(t_edge3[0], t_edge3[1], nodes)
-            edges[t_edge3] = d
-            edges[(t_edge3[1], t_edge3[0])] = d
-
-    return edges
-
-
-
 def outIIS(model):
     model.computeIIS()
     model.write("outputIISLog.ilp")
@@ -126,7 +101,7 @@ def outIIS(model):
 if __name__ == '__main__':
 
     base_dir = "../data/kawagoe_example"
-    N, E, D, F, G = load_data(f"{base_dir}/node.csv",
+    N, E, D, F, G, E_id = load_data(f"{base_dir}/node.csv",
                               f"{base_dir}/edge.csv",
                               f"{base_dir}/distance_matrix.csv",
                               f"{base_dir}/flow.csv")
@@ -150,16 +125,16 @@ if __name__ == '__main__':
 
     hubs = list(set(hubs))
     print("---------------------------↓2.create_Route↓-------------------------")
-    minLength = 2500  # 最小路線長
-    maxLength = 30000
-    span = 2500
+    minLength = 2000  # 最小路線長
+    maxLength = 21000
+    span = 1000
 
 
     # 路線パターン作成
     listTerminal = hub.createTerminalCombinationNoLoop(hubs, D, minLength)
     # 路線パターン作成
     output_list=f"{base_dir}/route_list.csv"
-    routes_condition, routes_node, routes_edge, routes_length, routes_objVal, routes_CalcTime = route.createRouteList(N, E, D, F, G,
+    routes_condition, routes_node, routes_edge, routes_length, routes_objVal, routes_CalcTime = route.createRouteList(N, E, D, F, G, E_id,
                                                                                                listTerminal, minLength, output_list,maxLength, span)
 
     route.outputRouteList(routes_condition, routes_node, routes_edge, routes_length,

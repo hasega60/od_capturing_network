@@ -291,7 +291,7 @@ def createRoute_loop_Flow(N, D, F, s, maxdist):
 
 
 
-def createRouteList(N, E, D, F, G, listTerminal, minLength, output_path, maxLength=30000,
+def createRouteList(N, E, D, F, G, E_id, listTerminal, minLength, output_path, maxLength=30000,
                     span=5000):
     routes_condition, routes_node, routes_edge, routes_length, routes_objVal, routes_CalcTime = {}, {}, {}, {}, {}, {}
     count = 0
@@ -337,7 +337,11 @@ def createRouteList(N, E, D, F, G, listTerminal, minLength, output_path, maxLeng
             routes_condition[count] = str(hub[0]) + "_" + str(hub[1]) + "_" + str("spath")
 
             routes_node[count] = sPath
-            routes_edge[count] = []
+            select_edge_id = []
+            for n in range(len(sPath)-1):
+                select_edge_id.append(E_id[(sPath[n], sPath[n+1])])
+
+            routes_edge[count] = select_edge_id
             routes_length[count] = shortestLength
             routes_objVal[count] = weightShortestPath
             routes_CalcTime[count] = 0
@@ -361,8 +365,11 @@ def createRouteList(N, E, D, F, G, listTerminal, minLength, output_path, maxLeng
                         "F")
                     if selectE is not None:
                         selectN = edgeConvertnodes(selectE)
+                        select_edge_id=[]
+                        for e in selectE:
+                            select_edge_id.append(E_id[e])
                         routes_node[count] = selectN
-                        routes_edge[count] = selectE
+                        routes_edge[count] = select_edge_id
                         routes_length[count] = routeLength
                         routes_objVal[count] = model.objVal
                         routes_CalcTime[count] = model.Runtime
