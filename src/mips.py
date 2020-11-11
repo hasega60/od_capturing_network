@@ -4,17 +4,34 @@ import numpy as np
 from scipy.spatial import Delaunay
 import matplotlib.pyplot as plt
 import networkx as nx
+import math
 import select_hub as hub
 import select_routes_from_edge as route
 
 EPS = 1.e-6
+semiMajorAxis = 6378137.0  # 赤道半径
+flattening = 1 / 298.257223563  # 扁平率
+e_2 = flattening * (2 - flattening)
+degree = math.pi / 180
+
 
 def distance_points(point1, point2):
     # euclid distance
     return np.sqrt((point2[0]-point1[0])**2 + (point2[1]-point1[1])**2)*1000
 
+def distance_point_latlon(point1, point2):
+    x1, y1, x2, y2=point1[0], point1[1],point2[0], point2[1]
+    coslat = math.cos((y1 + y2) / 2 * degree)
+    w2 = 1 / (1 - e_2 * (1 - coslat * coslat))
+    dx = (x1 - x2) * coslat
+    dy = (y1 - y2) * w2 * (1 - e_2)
+    return math.sqrt((dx * dx + dy * dy) * w2) * semiMajorAxis * degree
 
-def distance(id1, id2, nodes):
+
+def distance(id1, id2, nodes, is_latlon=True):
+    if is_latlon:
+        return distance_point_latlon(nodes[id1], nodes[id2])
+
     return distance_points(nodes[id1], nodes[id2])
 
 
