@@ -7,6 +7,7 @@ import networkx as nx
 import math
 import select_hub as hub
 import select_routes_from_edge as route
+import select_route_combination as combination
 
 EPS = 1.e-6
 semiMajorAxis = 6378137.0  # 赤道半径
@@ -142,9 +143,10 @@ if __name__ == '__main__':
 
     hubs = list(set(hubs))
     print("---------------------------↓2.create_Route↓-------------------------")
-    minLength = 2000  # 最小路線長
-    maxLength = 21000
-    span = 1000
+    minLength = 2500  # 最小路線長
+    maxLength = 15000
+    span = 2500
+    alfa = 1
 
 
     # 路線パターン作成
@@ -154,6 +156,14 @@ if __name__ == '__main__':
     routes_condition, routes_node, routes_edge, routes_length, routes_objVal, routes_CalcTime = route.createRouteList(N, E, D, F, G, E_id,
                                                                                                listTerminal, minLength, output_list,maxLength, span)
 
+    print("---------------------------↓3.route_Combination↓-------------------------")
+
+    alfa_list = [2, 10, 100, 1000]
+    beta_ratio = 4
+    for alfa in alfa_list:
+        selectNodes, id, routeLength, model_b, selectHubs = combination.calcRouteCombination_useFeeder2(N, E, D, F,routes_node,
+                                                                                            routes_length,
+                                                                                            alfa, alfa*beta_ratio)
     route.outputRouteList(routes_condition, routes_node, routes_edge, routes_length,
                     routes_objVal, routes_CalcTime, output_list)
 
