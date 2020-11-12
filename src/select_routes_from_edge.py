@@ -288,9 +288,6 @@ def createRoute_loop_Flow(N, D, F, s, maxdist):
     return selectN, selectE, routeLength, model_loop
 
 
-
-
-
 def createRouteList(N, E, D, F, G, E_id, listTerminal, minLength, output_path, maxLength=30000,
                     span=5000):
     routes_condition, routes_node, routes_edge, routes_length, routes_objVal, routes_CalcTime = {}, {}, {}, {}, {}, {}
@@ -350,7 +347,7 @@ def createRouteList(N, E, D, F, G, E_id, listTerminal, minLength, output_path, m
 
             # hub間路線網パターン作成
 
-            for length in range(minLength, maxLength, span):
+            for length in range(minLength, maxLength+1, span):
                 #timelimitだったら次の組み合わせへ
                 if timelimit:
                     continue
@@ -373,8 +370,6 @@ def createRouteList(N, E, D, F, G, E_id, listTerminal, minLength, output_path, m
                         routes_length[count] = routeLength
                         routes_objVal[count] = model.objVal
                         routes_CalcTime[count] = model.Runtime
-
-
 
 
                     else:

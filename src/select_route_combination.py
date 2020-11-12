@@ -39,8 +39,7 @@ def load_data(nodeData, edgeData, distanceMatrixData, flowData, routeData):
 
     return N, E, D, F, G, routes_node, routes_length
 
-def calcBestRouteCombination(N, E, routes_node, routes_length, total_length, mainNode,
-                             F=None):
+def calcBestRouteCombination(N, E, routes_node, routes_length, total_length, mainNode, F=None):
     model_brc = Model("bestRouteCombination")
     R = routes_node.keys()
 
@@ -102,77 +101,86 @@ def calcBestRouteCombination(N, E, routes_node, routes_length, total_length, mai
 
 
 
-def calcRouteCombination_useFeeder(N, E, D, F, routes_node, routes_length, mainNode, alfa):
+def calcRouteCombination_useFeeder(N, E, D, F, routes_node, routes_length, alfa=1):
     model_brc = Model("routeCombination_feeder")
     R = routes_node.keys()
 
-    x, y, z, u, v = {}, {}, {}, {}, {}
+    A, x, y1, y2, z, u = {}, {}, {}, {}, {}, {}
+    N_count=len(N)
 
-    # x_irは事前に作成
     for r in R:
+        # 路線選択の変数
+        x[r] = model_brc.addVar(vtype="B", name=f"x({r})")
         for i in N:
-            # if i in routes_node[r][0]:
+            # A_irは事前に作成
             if i in routes_node[r]:
-                x[i, r] = 1
+                A[i, r] = 1
             else:
-                x[i, r] = 0
+                A[i, r] = 0
 
     for i in N:
         # バス路線があるノード
-        v[i] = model_brc.addVar(vtype="B", name="v(%s)" % i)
+        z[i] = model_brc.addVar(vtype="B", name="z(%s)" % i)
         for j in N:
             if i != j:
-                # バス路線がないノード to あるノード
-                y[i, j] = model_brc.addVar(vtype="B", name=f"y({i}, {j})")
+                # フィーダー路線選択ノード iが路線でない
+                y1[i, j] = model_brc.addVar(vtype="B", name=f"y1({i}, {j})")
+                # jが路線でない
+                y2[i, j] = model_brc.addVar(vtype="B", name=f"y2({i}, {j})")
+                # i_jが路線で移動可能かどうか
+                u[i, j] = model_brc.addVar(vtype="B", name=f"u({i}, {j})")
 
-                # バス路線があるノード　to ないノード
-                z[i, j] = model_brc.addVar(vtype="B", name=f"z({i}, {j})")
-
-    for r in R:
-        u[r] = model_brc.addVar(vtype="B", name="u(%s)" % r)
 
     model_brc.update()
+    # 路線補足
     for i in N:
-        model_brc.addConstr(quicksum(x[i, r] * u[r] for r in R) >= v[i])
-        # model_brc.addConstr(v[i] <= 1)
+        model_brc.addConstr(quicksum(A[i, r] * x[r] for r in R) >= z[i])
 
-        # 起点・終点にバス路線がないとき
-        model_brc.addConstr(quicksum(y[i, k] for k in N if i != k) <= v[i])
-        model_brc.addConstr(quicksum(z[k, i] for k in N if i != k) <= v[i])
+    # 路線同士で結ばれた地点は移動可能
+    for i in N:
+        for j in N:
+            if i != j:
+                model_brc.addConstr(u[i, j] >= z[i] + z[j] - 1)
+                model_brc.addConstr(u[i, j] <= z[i])
+                model_brc.addConstr(u[i, j] <= z[j])
 
-    for k in N:
-        # kはバス路線に選択されているノード
-        model_brc.addConstr(quicksum(y[i, k] for i in N if i != k) >= v[k])
-        model_brc.addConstr(quicksum(z[k, i] for i in N if i != k) >= v[k])
+    # 片方だけ路線で結ばれた地点はフィーダー移動可能
+    for i in N:
+        for j in N:
+            if i != j:
+                model_brc.addConstr(y1[i, j] >= z[i])
+                model_brc.addConstr(y1[i, j] <= z[j])
 
-    # フロー捕捉制約 バス直接と+feederの捕捉量は同じ
-    model_brc.addConstr(quicksum(v[i] * v[j] * F[(i, j)] for i in N for j in N if i != j) +
-                        quicksum(F[(i, j)] * y[i, k] + F[(i, j)] * z[l, j] - F[(i, j)] * y[i, k] * z[l, j] for i in N
-                                 for k in N for l in N for j in N if i != j and i != k and k != l and l != j)
-                        == quicksum(F[(i, j)] for i in N for j in N if i != j)
-                        )
+                model_brc.addConstr(y2[i, j] <= z[i])
+                model_brc.addConstr(y2[i, j] >= z[j])
 
-    if mainNode is not None:
-        H = mainNode
-        # mainNodeが選ばれない路線は選ばない
-        for r in R:
-            model_brc.addConstr(quicksum(x[h, r] for h in H) >= u[r])
+                model_brc.addConstr(y1[i, j] <= u[i, j])
+                model_brc.addConstr(y2[i, j] <= u[i, j])
 
-    # 目的関数　ノードの重み取得最大化
-    model_brc.setObjective(quicksum(routes_length[r] * u[r] for r in R)
-                           + alfa * (quicksum(D[(i, k)]* F[(i, j)] * y[i, k] for i in N for k in N for j in N if i != j and i != k and k != j)
-                                     + quicksum(D[(l, j)]* F[(i, j)] * z[l, j] for i in N for l in N for j in N if i != j and i != l and l != j)), GRB.MINIMIZE)
 
-    model_brc.setObjective(quicksum(v[i] * v[j] * F[(i, j)] for i in N for j in N if i != j), GRB.MAXIMIZE)
+    # すべてのノードはyかuで捕捉される
+
+    #model_brc.addConstr(quicksum(y1[i, j] + y2[i, j] for i in N for j in N if i != j) >= N_count)
+
+    # 最低でも路線を一つ選ぶ
+
+    model_brc.addConstr(quicksum(x[r] for r in R) >= 1)
+
+    # 目的関数　距離
+
+    model_brc.setObjective(quicksum(routes_length[r] * x[r] for r in R)
+                           + alfa * (quicksum(F[(i, k)]*D[(i, j)]*y1[i, j] + F[(i, k)]*D[(j, k)]*y2[j, k]
+                                              for i in N for j in N for k in N if i != k and i != j and j != k)), GRB.MINIMIZE)
 
     model_brc.update()
     model_brc.optimize()
-    model_brc.__data = y, u
+    model_brc.__data = x, y1, y2, u
     # selectNode = [j for j in y if y[j].X > EPS]
-    selectRoute = [j for j in u if u[j].X > EPS]
+    selectRoute = [j for j in x if x[j].X > EPS]
     selectNode = []
     for r in selectRoute:
-        selectNode.extend(routes_node[r])
+        for n in routes_node[r]:
+            selectNode.append(n)
     length = 0
     selectHubs = []
     for r in selectRoute:
@@ -183,6 +191,101 @@ def calcRouteCombination_useFeeder(N, E, D, F, routes_node, routes_length, mainN
     print("case:" + str(alfa) + " hubs:" + str(selectHubs) + " node:" + str(selectNode) + "_route:" + str(
         selectRoute) + "_length:" + str(length))
     return selectNode, selectRoute, length, model_brc, selectHubs
+
+
+
+def calcRouteCombination_useFeeder2(N, E, D, F, routes_node, routes_length, alfa=2, beta=4):
+    model_brc = Model("routeCombination_feeder")
+    R = routes_node.keys()
+
+    A, x, y, z, u, v = {}, {}, {}, {}, {}, {}
+    N_count=len(N)
+
+    for r in R:
+        # 路線選択の変数
+        x[r] = model_brc.addVar(vtype="B", name=f"x({r})")
+        for i in N:
+            # 路線rでカヴァーされるノードi　A_irは事前に作成
+            if i in routes_node[r]:
+                A[i, r] = 1
+            else:
+                A[i, r] = 0
+
+    for i in N:
+        # バス路線があるノード
+        z[i] = model_brc.addVar(vtype="B", name="z(%s)" % i)
+        for j in N:
+            if i != j:
+                # フィーダー路線選択ノード
+                y[i, j] = model_brc.addVar(vtype="B", name=f"y({i}, {j})")
+
+                # i_jが路線で移動可能かどうか
+                u[i, j] = model_brc.addVar(vtype="B", name=f"u({i}, {j})")
+
+                # i_jを直接移動する必要があるか
+                v[i, j] = model_brc.addVar(vtype="B", name=f"v({i}, {j})")
+
+
+    model_brc.update()
+    # 路線によるノードの捕捉
+    for i in N:
+        model_brc.addConstr(quicksum(A[i, r] * x[r] for r in R) >= z[i])
+        model_brc.addConstr(z[i] <= 1)
+
+    for i in N:
+        for j in N:
+            if i != j:
+                # どちらも路線でカヴァーできるなら路線利用
+                model_brc.addConstr(u[i, j] >= z[i] + z[j] - 1)
+                model_brc.addConstr(u[i, j] <= z[i])
+                model_brc.addConstr(u[i, j] <= z[j])
+                # 最低でも路線を一つ選ぶ
+                model_brc.addConstr(v[i, j] >= 1 -(z[i] + z[j]))
+                #model_brc.addConstr(v[i, j] <= z[i])
+                #model_brc.addConstr(v[i, j] <= z[j])
+
+    for i in N:
+        for j in N:
+            if i != j:
+                # それ以外はフィーダー移動
+                model_brc.addConstr(v[i, j] + u[i, j] + y[i, j] == 1)
+
+    # 最低でも路線を一つ選ぶ
+    model_brc.addConstr(quicksum(x[r] for r in R) >= 1)
+
+    # 目的関数　距離
+    model_brc.setObjective(quicksum(routes_length[r] * x[r] for r in R)
+                           + (quicksum(F[(i, j)]* alfa * D[(i, j)]*y[i, j] for i in N for j in N if i != j))
+                           + (quicksum(F[(i, j)]* beta * D[(i, j)]*v[i, j] for i in N for j in N if i != j))
+                           , GRB.MINIMIZE)
+
+    model_brc.update()
+    model_brc.optimize()
+    #debug
+    #model_brc.computeIIS()
+    #model_brc.write("debug.ilp")
+    model_brc.__data = x, y, u, v
+    selectRoute = [j for j in x if x[j].X > EPS]
+    selectfeeder = [j for j in y if y[j].X > EPS]
+    selectdirect= [j for j in v if v[j].X > EPS]
+    selectNode = []
+    for r in selectRoute:
+        li = list(routes_node[r].split("-"))
+        for n in li:
+            selectNode.append(n)
+    length = 0
+    selectHubs = []
+    """
+    for r in selectRoute:
+        length += routes_length[r]
+        lst = r.split("_")
+        selectHubs.append((int(lst[0]), int(lst[1])))
+"""
+    print("case:" + str(alfa) + " hubs:" + str(selectHubs) + " node:" + str(selectNode) + "_route:" + str(
+        selectRoute) + "_length:" + str(length))
+    return selectNode, selectRoute, length, model_brc, selectHubs
+
+
 
 def outputRouteCombination(totalLength, routes_id, routes_hubs, routes_node, routes_length, routes_objVal,
                            routes_CalcTime, output_path):
@@ -218,6 +321,41 @@ if __name__ == '__main__':
                               f"{base_dir}/flow.csv", f"{base_dir}/route_list.csv")
 
     print("---------------------------↓3.route_Combination↓-------------------------")
+
+    alfa_list = [0.1,1, 2, 3]
+    beta_ratio = 4
+
+    # フローを標準化
+    f_max=max(F.values())
+    f_min=min(F.values())
+    F_n={}
+    for k, v in F.items():
+        F_n[k]=(v-f_min)/(f_max-f_min)
+
+
+
+    for alfa in alfa_list:
+        selectNodes, id, routeLength, model_b, selectHubs = calcRouteCombination_useFeeder2(N, E, D, F_n,routes_node,
+                                                                                            routes_length,
+                                                                                            alfa, alfa*beta_ratio)
+        continue
+
+        if id is not None:
+            totalLengthList[count] = alfa
+            routes_id_b[count] = id
+            routes_hubs_b[count] = selectHubs
+            routes_node_b[count] = selectNodes
+            routes_length_b[count] = routeLength
+            routes_objVal_b[count] = model_b.objVal
+            routes_CalcTime_b[count] = model_b.Runtime
+            count += 1
+
+            # TODO 都度出力
+            outputRouteCombination(totalLengthList, routes_id_b, routes_hubs_b, routes_node_b, routes_length_b,
+                                   routes_objVal_b, routes_CalcTime_b, f"{base_dir}/route_combination.csv")
+
+
+    exit()
     maxTotalLength = 30000  # 最大路線長
     minTotalLength = 5000  # 最小路線長
     totalLengthSpan = 1000  # 路線候補を作る間隔
@@ -228,8 +366,9 @@ if __name__ == '__main__':
                                                                                      routes_node, routes_edge,
                                                                                      routes_length, length, mainNode, F)
         """
-        selectNodes, id, routeLength, model_b, selectHubs = calcBestRouteCombination(N, E, routes_node, routes_length, length,
-                                                                                     mainNode, F)
+        #selectNodes, id, routeLength, model_b, selectHubs = calcBestRouteCombination(N, E, routes_node, routes_length, length, mainNode, F)
+
+        selectNodes, id, routeLength, model_b, selectHubs = calcRouteCombination_useFeeder2(N, E, D, F,routes_node,routes_length,alfa, beta)
 
         if id is not None:
             totalLengthList[count] = length
