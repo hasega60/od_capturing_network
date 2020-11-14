@@ -4,6 +4,8 @@ import numpy as np
 import networkx as nx
 from scipy.spatial import Delaunay
 import matplotlib.pyplot as plt
+import select_feeder_depot as feeder_depot
+
 EPS = 1.e-6
 
 def load_data(nodeData, edgeData, distanceMatrixData, flowData, routeData):
@@ -87,6 +89,8 @@ def calcBestRouteCombination(N, E, routes_node, routes_length, total_length, mai
     selectRoute = [j for j in u if u[j].X > EPS]
     selectNode = []
     for r in selectRoute:
+        if isinstance(routes_node[r], str):
+            routes_node[r] = routes_node[r].replace('[', '').replace(']', '').split(",")
         selectNode.extend(routes_node[r])
     length = 0
     selectHubs = []
@@ -100,100 +104,7 @@ def calcBestRouteCombination(N, E, routes_node, routes_length, total_length, mai
     return selectNode, selectRoute, length, model_brc, selectHubs
 
 
-
-def calcRouteCombination_useFeeder(N, E, D, F, routes_node, routes_length, alfa=1):
-    model_brc = Model("routeCombination_feeder")
-    R = routes_node.keys()
-
-    A, x, y1, y2, z, u = {}, {}, {}, {}, {}, {}
-    N_count=len(N)
-
-    for r in R:
-        # 路線選択の変数
-        x[r] = model_brc.addVar(vtype="B", name=f"x({r})")
-        for i in N:
-            # A_irは事前に作成
-            if i in routes_node[r]:
-                A[i, r] = 1
-            else:
-                A[i, r] = 0
-
-    for i in N:
-        # バス路線があるノード
-        z[i] = model_brc.addVar(vtype="B", name="z(%s)" % i)
-        for j in N:
-            if i != j:
-                # フィーダー路線選択ノード iが路線でない
-                y1[i, j] = model_brc.addVar(vtype="B", name=f"y1({i}, {j})")
-                # jが路線でない
-                y2[i, j] = model_brc.addVar(vtype="B", name=f"y2({i}, {j})")
-                # i_jが路線で移動可能かどうか
-                u[i, j] = model_brc.addVar(vtype="B", name=f"u({i}, {j})")
-
-
-    model_brc.update()
-    # 路線補足
-    for i in N:
-        model_brc.addConstr(quicksum(A[i, r] * x[r] for r in R) >= z[i])
-
-    # 路線同士で結ばれた地点は移動可能
-    for i in N:
-        for j in N:
-            if i != j:
-                model_brc.addConstr(u[i, j] >= z[i] + z[j] - 1)
-                model_brc.addConstr(u[i, j] <= z[i])
-                model_brc.addConstr(u[i, j] <= z[j])
-
-    # 片方だけ路線で結ばれた地点はフィーダー移動可能
-    for i in N:
-        for j in N:
-            if i != j:
-                model_brc.addConstr(y1[i, j] >= z[i])
-                model_brc.addConstr(y1[i, j] <= z[j])
-
-                model_brc.addConstr(y2[i, j] <= z[i])
-                model_brc.addConstr(y2[i, j] >= z[j])
-
-                model_brc.addConstr(y1[i, j] <= u[i, j])
-                model_brc.addConstr(y2[i, j] <= u[i, j])
-
-
-    # すべてのノードはyかuで捕捉される
-
-    #model_brc.addConstr(quicksum(y1[i, j] + y2[i, j] for i in N for j in N if i != j) >= N_count)
-
-    # 最低でも路線を一つ選ぶ
-
-    model_brc.addConstr(quicksum(x[r] for r in R) >= 1)
-
-    # 目的関数　距離
-
-    model_brc.setObjective(quicksum(routes_length[r] * x[r] for r in R)
-                           + alfa * (quicksum(F[(i, k)]*D[(i, j)]*y1[i, j] + F[(i, k)]*D[(j, k)]*y2[j, k]
-                                              for i in N for j in N for k in N if i != k and i != j and j != k)), GRB.MINIMIZE)
-
-    model_brc.update()
-    model_brc.optimize()
-    model_brc.__data = x, y1, y2, u
-    # selectNode = [j for j in y if y[j].X > EPS]
-    selectRoute = [j for j in x if x[j].X > EPS]
-    selectNode = []
-    for r in selectRoute:
-        for n in routes_node[r]:
-            selectNode.append(n)
-    length = 0
-    selectHubs = []
-    for r in selectRoute:
-        length += routes_length[r]
-        lst = r.split("_")
-        selectHubs.append((int(lst[0]), int(lst[1])))
-
-    print("case:" + str(alfa) + " hubs:" + str(selectHubs) + " node:" + str(selectNode) + "_route:" + str(
-        selectRoute) + "_length:" + str(length))
-    return selectNode, selectRoute, length, model_brc, selectHubs
-
-
-
+# 直達，フィーダー，路線の組み合わせ　実装完了せず
 def calcRouteCombination_useFeeder2(N, E, D, F, routes_node, routes_length, alfa=2, beta=4):
     model_brc = Model("routeCombination_feeder")
     R = routes_node.keys()
@@ -320,55 +231,21 @@ if __name__ == '__main__':
                               f"{base_dir}/distance_matrix.csv",
                               f"{base_dir}/flow.csv", f"{base_dir}/route_list.csv")
 
+    # string to list
+    for r in routes_node.keys():
+        if isinstance(routes_node[r], str):
+            routes_node[r] = routes_node[r].replace('[', '').replace(']', '').split(",")
+
     print("---------------------------↓3.route_Combination↓-------------------------")
-
-    alfa_list = [0.1,1, 2, 3]
-    beta_ratio = 4
-
-    # フローを標準化
-    f_max=max(F.values())
-    f_min=min(F.values())
-    F_n={}
-    for k, v in F.items():
-        F_n[k]=(v-f_min)/(f_max-f_min)
-
-
-
-    for alfa in alfa_list:
-        selectNodes, id, routeLength, model_b, selectHubs = calcRouteCombination_useFeeder2(N, E, D, F_n,routes_node,
-                                                                                            routes_length,
-                                                                                            alfa, alfa*beta_ratio)
-        continue
-
-        if id is not None:
-            totalLengthList[count] = alfa
-            routes_id_b[count] = id
-            routes_hubs_b[count] = selectHubs
-            routes_node_b[count] = selectNodes
-            routes_length_b[count] = routeLength
-            routes_objVal_b[count] = model_b.objVal
-            routes_CalcTime_b[count] = model_b.Runtime
-            count += 1
-
-            # TODO 都度出力
-            outputRouteCombination(totalLengthList, routes_id_b, routes_hubs_b, routes_node_b, routes_length_b,
-                                   routes_objVal_b, routes_CalcTime_b, f"{base_dir}/route_combination.csv")
-
-
-    exit()
     maxTotalLength = 30000  # 最大路線長
     minTotalLength = 5000  # 最小路線長
     totalLengthSpan = 1000  # 路線候補を作る間隔
+    capa=9999
 
     for length in range(minTotalLength, maxTotalLength + totalLengthSpan, totalLengthSpan):
-        """        
-        selectNodes, id, routeLength, model_b, selectHubs = calcBestRouteCombination(N, E, routes_condition,
-                                                                                     routes_node, routes_edge,
-                                                                                     routes_length, length, mainNode, F)
-        """
-        #selectNodes, id, routeLength, model_b, selectHubs = calcBestRouteCombination(N, E, routes_node, routes_length, length, mainNode, F)
+        selectNodes, id, routeLength, model_b, selectHubs = calcBestRouteCombination(N, E, routes_node, routes_length, length, mainNode, F)
 
-        selectNodes, id, routeLength, model_b, selectHubs = calcRouteCombination_useFeeder2(N, E, D, F,routes_node,routes_length,alfa, beta)
+        hubs = feeder_depot.select_feeder_hub(N, D, F, selectNodes, capa)
 
         if id is not None:
             totalLengthList[count] = length
