@@ -4,6 +4,7 @@ import numpy as np
 import networkx as nx
 from scipy.spatial import Delaunay
 import matplotlib.pyplot as plt
+import select_hub as hub
 import select_feeder_depot as feeder_depot
 
 EPS = 1.e-6
@@ -41,7 +42,7 @@ def load_data(nodeData, edgeData, distanceMatrixData, flowData, routeData):
 
     return N, E, D, F, G, routes_node, routes_length
 
-def calcBestRouteCombination(N, E, routes_node, routes_length, total_length, mainNode, F=None):
+def calcBestRouteCombination(N, E, routes_node, routes_length, total_length, mainNode, F):
     model_brc = Model("bestRouteCombination")
     R = routes_node.keys()
 
@@ -50,8 +51,7 @@ def calcBestRouteCombination(N, E, routes_node, routes_length, total_length, mai
     # x_irは事前に作成
     for r in R:
         for i in N:
-            # if i in routes_node[r][0]:
-            if i in routes_node[r]:
+            if f"{i}" in routes_node[r]:
                 x[i, r] = 1
             else:
                 x[i, r] = 0
@@ -71,17 +71,15 @@ def calcBestRouteCombination(N, E, routes_node, routes_length, total_length, mai
         # 路線長制約
         model_brc.addConstr(sum(routes_length[r] * u[r] for r in R) <= total_length)
 
+    """
     if mainNode is not None:
         H = mainNode
         # mainNodeが選ばれない路線は選ばない
         for r in R:
             model_brc.addConstr(quicksum(x[h, r] for h in H) >= u[r])
-
+    """
     # 目的関数　ノードの重み取得最大化
-    if F is None:
-        model_brc.setObjective(quicksum(y[i] * N[i][2] for i in N), GRB.MAXIMIZE)
-    else:
-        model_brc.setObjective(quicksum(y[i] * y[j] * F[(i, j)] for i in N for j in N if i != j), GRB.MAXIMIZE)
+    model_brc.setObjective(quicksum(y[i] * y[j] * F[(i, j)] for i in N for j in N if i != j), GRB.MAXIMIZE)
     model_brc.update()
     model_brc.optimize()
     model_brc.__data = y, u
@@ -222,30 +220,52 @@ if __name__ == '__main__':
     alfa_list = [1, 2, 5, 10]
     totalLengthList, routes_hubs_b, routes_id_b, routes_node_b, routes_length_b, routes_objVal_b, routes_CalcTime_b = {}, {}, {}, {}, {}, {}, {}
     count = 0
-    #TODO mainnode
-    mainNode = ["N063"]
-
-    base_dir = "../data/kawagoe_example"
+    base_dir = "../data/moriya"
     N, E, D, F, G, routes_node, routes_length = load_data(f"{base_dir}/node.csv",
                               f"{base_dir}/edge.csv",
                               f"{base_dir}/distance_matrix.csv",
                               f"{base_dir}/flow.csv", f"{base_dir}/route_list.csv")
+
+    p = 1
+    q = 7
 
     # string to list
     for r in routes_node.keys():
         if isinstance(routes_node[r], str):
             routes_node[r] = routes_node[r].replace('[', '').replace(']', '').split(",")
 
+    print("---------------------------↓1.create_Hub↓-------------------------")
+    main_hub = hub.pmedian(N, D, p)
+    sub_hub_c, _ = hub.pcenter_existing(N, D, main_hub, q)
+    sub_hub_m, _ = hub.pmedian_existing(N, D, main_hub, q)
+    hubs = main_hub.copy()
+    for h in sub_hub_c:
+        hubs.append(h)
+    for h in sub_hub_m:
+        hubs.append(h)
+
+    print("main_hub:" + str(main_hub))
+    print("sub_hub_center:" + str(sub_hub_c))
+    print("sub_hub_median:" + str(sub_hub_m))
+
     print("---------------------------↓3.route_Combination↓-------------------------")
-    maxTotalLength = 30000  # 最大路線長
-    minTotalLength = 5000  # 最小路線長
-    totalLengthSpan = 1000  # 路線候補を作る間隔
-    capa=9999
+    maxTotalLength = 50000  # 最大路線長
+    minTotalLength = 20000  # 最小路線長
+    totalLengthSpan = 5000  # 路線候補を作る間隔
+    capa = 50
+    distance_limit = 5000
+    capacity_cost = 100000
 
     for length in range(minTotalLength, maxTotalLength + totalLengthSpan, totalLengthSpan):
-        selectNodes, id, routeLength, model_b, selectHubs = calcBestRouteCombination(N, E, routes_node, routes_length, length, mainNode, F)
+        selectNodes, id, routeLength, model_b, selectHubs = calcBestRouteCombination(N, E, routes_node, routes_length, length, main_hub, F)
+        selectNode_int=[]
+        for i in selectNodes:
+            selectNode_int.append(int(i))
 
-        hubs = feeder_depot.select_feeder_hub(N, D, F, selectNodes, capa)
+        hubs, select_node_hubs, dist, depot_capacity = feeder_depot.select_feeder_hub2(N, D, F, selectNode_int, distance_limit, capacity_cost)
+
+
+        continue
 
         if id is not None:
             totalLengthList[count] = length
