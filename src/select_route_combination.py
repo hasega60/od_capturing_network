@@ -197,19 +197,20 @@ def calcRouteCombination_useFeeder2(N, E, D, F, routes_node, routes_length, alfa
 
 
 def outputRouteCombination(totalLength, routes_id, routes_hubs, routes_node, routes_length, routes_objVal,
-                           routes_CalcTime, output_path):
+                           routes_CalcTime,feeder_hubs, select_feeder_hubs, total_feeder_distance, depot_capacities, output_path):
     outRouteList = pd.DataFrame(index=[],
                                 columns=["totalLength",
                                          "routeID",
                                          "hubs",
                                          "nodes",
                                          "routeLength",
-                                         "objVal", "calcTime"])
+                                         "objVal", "calcTime", "feeder_hub","select_feeder_hub",
+                                         "total_feeder_distance","depot_capacities"])
 
     for key, routeId in routes_id.items():
         series = pd.Series(
             [totalLength[key], routeId, routes_hubs[key], routes_node[key], routes_length[key], routes_objVal[key],
-             routes_CalcTime[key]],
+             routes_CalcTime[key],feeder_hubs[key], select_feeder_hubs[key], total_feeder_distance[key], depot_capacities[key]],
             index=outRouteList.columns)
         outRouteList = outRouteList.append(series,
                                            ignore_index=True)
@@ -219,6 +220,7 @@ def outputRouteCombination(totalLength, routes_id, routes_hubs, routes_node, rou
 if __name__ == '__main__':
     alfa_list = [1, 2, 5, 10]
     totalLengthList, routes_hubs_b, routes_id_b, routes_node_b, routes_length_b, routes_objVal_b, routes_CalcTime_b = {}, {}, {}, {}, {}, {}, {}
+    feeder_hubs, select_feeder_hubs, total_feeder_distance, depot_capacities = {}, {}, {}, {}
     count = 0
     base_dir = "../data/moriya"
     N, E, D, F, G, routes_node, routes_length = load_data(f"{base_dir}/node.csv",
@@ -264,9 +266,6 @@ if __name__ == '__main__':
 
         hubs, select_node_hubs, dist, depot_capacity = feeder_depot.select_feeder_hub2(N, D, F, selectNode_int, distance_limit, capacity_cost)
 
-
-        continue
-
         if id is not None:
             totalLengthList[count] = length
             routes_id_b[count] = id
@@ -275,11 +274,17 @@ if __name__ == '__main__':
             routes_length_b[count] = routeLength
             routes_objVal_b[count] = model_b.objVal
             routes_CalcTime_b[count] = model_b.Runtime
+            feeder_hubs[count] = hubs
+            select_feeder_hubs[count] = select_node_hubs
+            total_feeder_distance[count] = dist
+            depot_capacities[count] = depot_capacity
             count += 1
 
             # TODO 都度出力
             outputRouteCombination(totalLengthList, routes_id_b, routes_hubs_b, routes_node_b, routes_length_b,
-                                   routes_objVal_b, routes_CalcTime_b, f"{base_dir}/route_combination.csv")
+                                   routes_objVal_b, routes_CalcTime_b, feeder_hubs,
+                                   select_feeder_hubs, total_feeder_distance, depot_capacities,
+                                   f"{base_dir}/route_combination.csv")
 
     #for alfa in alfa_list:
     #    selectNode, selectRoute, length, model_brc, selectHubs = calcRouteCombination_useFeeder(N, E, D, F, routes_node, routes_length, mainNode, alfa)
