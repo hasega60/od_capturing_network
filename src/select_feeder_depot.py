@@ -65,7 +65,11 @@ def select_feeder_hub(N, D, F, select_nodes, capa):
 
     print(f"feeder_hubs:{hubs}, dist:{dist}")
     print(f"capacity:{depot_capacity}")
-    return hubs, select_node_hubs, dist
+
+    max_capacity = np.max(depot_capacity.values())
+    avg_capacity = np.mean(depot_capacity.values())
+
+    return hubs, select_node_hubs, dist, depot_capacity, max_capacity, avg_capacity
 
 def select_feeder_hub2(N, D, F, select_nodes, distance_limit, capacity_cost):
     # 配置コスト+容量コストの最小化
@@ -126,4 +130,8 @@ def select_feeder_hub2(N, D, F, select_nodes, distance_limit, capacity_cost):
 
     print(f"feeder_hubs:{hubs}, dist:{dist}")
     print(f"capacity:{depot_capacity}")
-    return hubs, select_node_hubs, dist, depot_capacity
+
+    max_capacity = max(list(depot_capacity.values()))
+    avg_capacity = np.average(list(depot_capacity.values()))
+
+    return hubs, select_node_hubs, dist, depot_capacity, max_capacity, avg_capacity
