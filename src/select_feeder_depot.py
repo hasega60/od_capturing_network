@@ -71,7 +71,7 @@ def select_feeder_hub(N, D, F, select_nodes, capa):
 
     return hubs, select_node_hubs, dist, depot_capacity, max_capacity, avg_capacity
 
-def select_feeder_hub2(N, D, F, select_nodes, distance_limit, capacity_cost):
+def select_feeder_hub_min_allocation(N, D, F, select_nodes, distance_limit, capacity_cost):
     # 配置コスト+容量コストの最小化
     model = Model("feeder_hub")
     # 発生・集中量
@@ -115,10 +115,79 @@ def select_feeder_hub2(N, D, F, select_nodes, distance_limit, capacity_cost):
     model.__data = x, y
     hubs = [j for j in y if y[j].X > EPS]
     select_node_hubs = [j for j in x if x[j].X > EPS]
-    dist = 0
+    flow, flow_dist = 0, 0
 
     for i in select_node_hubs:
-        dist += D[(i[0], i[1])]
+        flow += (F_o[i[0]]+F_d[i[0]])
+        flow_dist += F[(i[0], i[1])] * D[(i[0], i[1])]
+
+    depot_capacity = {}
+
+    for t in select_node_hubs:
+        if t[1] in depot_capacity.keys():
+            depot_capacity[t[1]] += F_o[t[0]]+F_d[t[0]]
+        else:
+            depot_capacity[t[1]] = F_o[t[0]] + F_d[t[0]]
+
+    print(f"feeder_hubs:{hubs}, flow:{flow}, dist:{flow_dist}")
+    print(f"capacity:{depot_capacity}")
+
+    max_capacity = max(list(depot_capacity.values()))
+    avg_capacity = np.average(list(depot_capacity.values()))
+
+    return hubs, select_node_hubs, flow ,flow_dist, depot_capacity, max_capacity, avg_capacity
+
+
+
+def select_feeder_hub_max_flow(N, D, F, select_nodes, distance_limit):
+    # 配置コスト+容量コストの最小化
+    model = Model("feeder_hub")
+    # 発生・集中量
+    F_o, F_d, N_s = {}, {}, {}
+    for i in N:
+        if i not in select_nodes:
+            N_s[i] = N[i]
+        f_o, f_d = 0,0
+        for j in N:
+            if i != j:
+                f_o += F[(i, j)]
+                f_d += F[(j, i)]
+
+        F_o[i] = f_o
+        F_d[i] = f_d
+
+        # binary xij 顧客iの需要が施設jによって満たされる時　　yj施設jが開設するとき
+    x, y = {}, {}
+    for j in select_nodes:
+        y[j] = model.addVar(vtype="B", name="y(%s)" % j)
+        for i in N_s:
+            if (i, j) not in x.keys():
+                x[i, j] = model.addVar(vtype="B", name="x(%s,%s)" % (i, j))
+    model.update()
+
+    for i in N_s:
+        model.addConstr(quicksum(x[i, j] for j in select_nodes) == 1, "Assign(%s)" % i)  # 顧客iが何れかの施設に割り当てられる
+        for j in select_nodes:
+            model.addConstr(x[i, j] <= y[j], "Strong(%s,%s)" % (i, j))
+
+    #距離制約
+    for j in select_nodes:
+        for i in N_s:
+            model.addConstr(D[(i, j)] * x[i, j] <= distance_limit)
+
+    model.setObjective(quicksum(x[i, j] * (F_o[i]+F_d[i]) *(1/D[(i, j)]) for i in N_s for j in select_nodes), GRB.MAXIMIZE)
+
+    model.update()
+    model.optimize()
+
+    model.__data = x, y
+    hubs = [j for j in y if y[j].X > EPS]
+    select_node_hubs = [j for j in x if x[j].X > EPS]
+    flow, flow_dist = 0, 0
+
+    for i in select_node_hubs:
+        flow += (F_o[i[0]]+F_d[i[0]])
+        flow_dist += F[(i[0], i[1])] * D[(i[0], i[1])]
 
     depot_capacity={}
 
@@ -128,10 +197,10 @@ def select_feeder_hub2(N, D, F, select_nodes, distance_limit, capacity_cost):
         else:
             depot_capacity[t[1]] = F_o[t[0]] + F_d[t[0]]
 
-    print(f"feeder_hubs:{hubs}, dist:{dist}")
+    print(f"feeder_hubs:{hubs}, flow:{flow}, dist:{flow_dist}")
     print(f"capacity:{depot_capacity}")
 
     max_capacity = max(list(depot_capacity.values()))
     avg_capacity = np.average(list(depot_capacity.values()))
 
-    return hubs, select_node_hubs, dist, depot_capacity, max_capacity, avg_capacity
+    return hubs, select_node_hubs, flow ,flow_dist, depot_capacity, max_capacity, avg_capacity

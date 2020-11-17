@@ -53,7 +53,6 @@ def calcBestRouteCombination(N, routes_node, routes_length, total_length, mainNo
         for i in N:
             if f"{i}" in routes_node[r]:
                 A[i, r] = 1
-                x[i, r] = 1
             else:
                 A[i, r] = 0
 
@@ -83,13 +82,13 @@ def calcBestRouteCombination(N, routes_node, routes_length, total_length, mainNo
                 model_brc.addConstr(z[i, j] >= y[i] + y[j] - 1)
                 model_brc.addConstr(z[i, j] <= y[i])
                 model_brc.addConstr(z[i, j] <= y[j])
-    """
+
     if mainNode is not None:
         H = mainNode
         # mainNodeが選ばれない路線は選ばない
         for r in R:
-            model_brc.addConstr(quicksum(x[h, r] for h in H) >= u[r])
-    """
+            model_brc.addConstr(quicksum(A[h, r] for h in H) >= u[r])
+
     # 目的関数　ノードの重み取得最大化
     model_brc.setObjective(quicksum(z[i, j] * F[(i, j)] for i in N for j in N if i != j), GRB.MAXIMIZE)
     #model_brc.setObjective(quicksum(y[i] * y[j] * F[(i, j)] for i in N for j in N if i != j), GRB.MAXIMIZE)
@@ -220,32 +219,33 @@ def calcRouteCombination_useFeeder2(N, E, D, F, routes_node, routes_length, alfa
 
 def outputRouteCombination(totalLength, routes_id, routes_hubs, routes_node, routes_length, routes_objVal,
                            routes_CalcTime,feeder_hubs, feeder_hub_count, select_feeder_hubs,
-                           total_feeder_distance, depot_capacities, max_capacities, avg_capacities,
-                           output_path, output_path_summary):
+                           total_feeder_distance, flow_feeders, depot_capacities, max_capacities, avg_capacities,
+                           output_path, output_path_summary, output_path_node, output_path_feeder_flow):
     outRouteList = pd.DataFrame(index=[],
-                                columns=["totalLength",
+                                columns=["condition",
                                          "routeID",
                                          "hubs",
                                          "nodes",
                                          "routeLength",
                                          "objVal", "calcTime", "feeder_hub", "feeder_hub_count",
-                                         "select_feeder_hub", "total_feeder_distance","depot_capacities",
+                                         "select_feeder_hub", "flow_feeder","total_feeder_distance","depot_capacities",
                                          "max_capacities", "avg_capacities"])
 
     outRouteList_summary = pd.DataFrame(index=[],
-                                columns=["condition", "flow","routes_length","feeder_hub_count","total_feeder_distance",
-                                         "max_capacities", "avg_capacities"])
+                                columns=["condition", "flow","routes_length","feeder_hub_count","flow_feeder",
+                                         "total_feeder_distance","max_capacities", "avg_capacities"])
 
     for key, routeId in routes_id.items():
         series = pd.Series(
             [totalLength[key], routeId, routes_hubs[key], routes_node[key], routes_length[key], routes_objVal[key],
-             routes_CalcTime[key],feeder_hubs[key],feeder_hub_count[key], select_feeder_hubs[key], total_feeder_distance[key], depot_capacities[key],
+             routes_CalcTime[key],feeder_hubs[key],feeder_hub_count[key], select_feeder_hubs[key],flow_feeders[key],
+             total_feeder_distance[key], depot_capacities[key],
              max_capacities[key], avg_capacities[key]],
             index=outRouteList.columns)
 
         series_summary=pd.Series(
-            [totalLength[key], routes_objVal[key],routes_length[key], feeder_hub_count[key],total_feeder_distance[key],
-             max_capacities[key], avg_capacities[key]],
+            [totalLength[key], routes_objVal[key],routes_length[key], feeder_hub_count[key],flow_feeders[key],
+             total_feeder_distance[key],max_capacities[key], avg_capacities[key]],
             index=outRouteList_summary.columns)
 
         outRouteList = outRouteList.append(series,
@@ -256,10 +256,31 @@ def outputRouteCombination(totalLength, routes_id, routes_hubs, routes_node, rou
     outRouteList.to_csv(output_path, index=False)
     outRouteList_summary.to_csv(output_path_summary, index=False)
 
+    # 選択されたノード，エッジ，フローのリストを出力する
+    outRouteList_export = outRouteList[["condition", "routeID", "nodes", "select_feeder_hub"]]
+    out_node, out_feeder = [], []
+    for v in outRouteList_export.values:
+        condition = v[0]
+        for n in v[2]:
+            out_node.append([condition, n])
+        for f in v[3]:
+            out_feeder.append([condition, f[0], f[1]])
+
+    outRouteNodes=pd.DataFrame(out_node, columns=["condition", "node"])
+    outFeederFlow=pd.DataFrame(out_feeder, columns=["condition", "from_node", "hub_node"])
+
+    outRouteNodes.to_csv(output_path_node, index=False)
+    outFeederFlow.to_csv(output_path_feeder_flow, index=False)
+
+
+
+
+
 if __name__ == '__main__':
-    alfa_list = [1, 2, 5, 10]
-    totalLengthList, routes_hubs_b, routes_id_b, routes_node_b, routes_length_b, routes_objVal_b, routes_CalcTime_b = {}, {}, {}, {}, {}, {}, {}
-    feeder_hubs,feeder_hub_count , select_feeder_hubs, total_feeder_distance, depot_capacities, max_capacities, avg_capacities = {}, {}, {}, {}, {}, {}, {}
+    totalLengthList, routes_hubs_b, routes_id_b, routes_node_b, \
+    routes_length_b, routes_objVal_b, routes_CalcTime_b = {}, {}, {}, {}, {}, {}, {}
+    feeder_hubs,feeder_hub_count , select_feeder_hubs, \
+    total_feeder_distance, depot_capacities, max_capacities, avg_capacities, flow_feeders = {}, {}, {}, {}, {}, {}, {}, {}
     count = 0
     base_dir = "../data/moriya"
     N, E, D, F, G, routes_node, routes_length = load_data(f"{base_dir}/node.csv",
@@ -298,25 +319,27 @@ if __name__ == '__main__':
     capacity_cost = 100000
 
     for length in range(minTotalLength, maxTotalLength + totalLengthSpan, totalLengthSpan):
-        selectNode, selectRoute, length, model, selectHubs, flow = calcBestRouteCombination(N, routes_node, routes_length, length, main_hub, F)
+        selectNode, selectRoute, total_length, model, selectHubs, flow = calcBestRouteCombination(N, routes_node, routes_length, length, main_hub, F)
         selectNode_int=[]
         for i in selectNode:
             selectNode_int.append(int(i))
 
-        hubs, select_node_hubs, dist, depot_capacity, max_capacity, avg_capacity = feeder_depot.select_feeder_hub2(N, D, F, selectNode_int, distance_limit, capacity_cost)
+        #hubs, select_node_hubs, flow_feeder, flow_dist, depot_capacity, max_capacity, avg_capacity = feeder_depot.select_feeder_hub_min_allocation(N, D, F, selectNode_int, distance_limit, capacity_cost)
+        hubs, select_node_hubs, flow_feeder, flow_dist, depot_capacity, max_capacity, avg_capacity = feeder_depot.select_feeder_hub_max_flow(N, D, F, selectNode_int, distance_limit)
 
         if id is not None:
             totalLengthList[count] = length
-            routes_id_b[count] = id
+            routes_id_b[count] = selectRoute
             routes_hubs_b[count] = selectHubs
             routes_node_b[count] = selectNode
-            routes_length_b[count] = length
+            routes_length_b[count] = total_length
             routes_objVal_b[count] = flow
             routes_CalcTime_b[count] = model.Runtime
             feeder_hubs[count] = hubs
             feeder_hub_count[count] = len(hubs)
             select_feeder_hubs[count] = select_node_hubs
-            total_feeder_distance[count] = dist
+            flow_feeders[count] = flow_feeder
+            total_feeder_distance[count] = flow_dist
             depot_capacities[count] = depot_capacity
             max_capacities[count] = max_capacity
             avg_capacities[count] = avg_capacity
@@ -324,9 +347,11 @@ if __name__ == '__main__':
 
             # TODO 都度出力
             outputRouteCombination(totalLengthList, routes_id_b, routes_hubs_b, routes_node_b, routes_length_b,
-                                   routes_objVal_b, routes_CalcTime_b, feeder_hubs, feeder_hub_count,
-                                   select_feeder_hubs, total_feeder_distance, depot_capacities, max_capacities, avg_capacities,
-                                   f"{base_dir}/route_combination.csv", f"{base_dir}/route_combination_summary.csv")
+                                   routes_objVal_b, routes_CalcTime_b, feeder_hubs, feeder_hub_count,select_feeder_hubs,
+                                   total_feeder_distance, flow_feeders, depot_capacities, max_capacities, avg_capacities,
+                                   f"{base_dir}/route_combination.csv", f"{base_dir}/route_combination_summary.csv",
+                                   f"{base_dir}/route_node.csv", f"{base_dir}/feeder_hub_select.csv"
+                                   )
 
     #for alfa in alfa_list:
     #    selectNode, selectRoute, length, model_brc, selectHubs = calcRouteCombination_useFeeder(N, E, D, F, routes_node, routes_length, mainNode, alfa)
