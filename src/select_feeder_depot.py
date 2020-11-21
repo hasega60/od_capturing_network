@@ -139,7 +139,7 @@ def select_feeder_hub_min_allocation(N, D, F, select_nodes, distance_limit, capa
 
 
 
-def select_feeder_hub_max_flow(N, D, F, select_nodes, distance_limit):
+def select_feeder_hub_max_flow(N, D, F, select_nodes,max_port_capacity=99999, max_port_count=9999, distance_limit=30000):
     # 配置コスト+容量コストの最小化
     model = Model("feeder_hub")
     # 発生・集中量
@@ -166,14 +166,21 @@ def select_feeder_hub_max_flow(N, D, F, select_nodes, distance_limit):
     model.update()
 
     for i in N_s:
-        model.addConstr(quicksum(x[i, j] for j in select_nodes) == 1, "Assign(%s)" % i)  # 顧客iが何れかの施設に割り当てられる
+        #model.addConstr(quicksum(x[i, j] for j in select_nodes) == 1, "Assign(%s)" % i)  # 顧客iが何れかの施設一箇所だけに割り当てられる
         for j in select_nodes:
             model.addConstr(x[i, j] <= y[j], "Strong(%s,%s)" % (i, j))
 
-    #距離制約
+    #最大距離制約
     for j in select_nodes:
         for i in N_s:
             model.addConstr(D[(i, j)] * x[i, j] <= distance_limit)
+
+    #ポート数制約
+    model.addConstr(quicksum(y[j] for j in select_nodes) <= max_port_count)
+
+    #ポート容量制約
+    for i in N_s:
+        model.addConstr(quicksum((F_o[i]+F_d[i]) * x[i, j] for j in select_nodes) <= max_port_capacity)
 
     model.setObjective(quicksum(x[i, j] * (F_o[i]+F_d[i]) *(1/D[(i, j)]) for i in N_s for j in select_nodes), GRB.MAXIMIZE)
 

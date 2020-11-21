@@ -42,7 +42,7 @@ def load_data(nodeData, edgeData, distanceMatrixData, flowData, routeData):
 
     return N, E, D, F, G, routes_node, routes_length
 
-def calcBestRouteCombination(N, routes_node, routes_length, total_length, mainNode, F):
+def calcBestRouteCombination(N, routes_node, routes_length, total_length, F, mainNode=None):
     model_brc = Model("bestRouteCombination")
     R = routes_node.keys()
 
@@ -310,22 +310,24 @@ if __name__ == '__main__':
     print("sub_hub_center:" + str(sub_hub_c))
     print("sub_hub_median:" + str(sub_hub_m))
 
-    print("---------------------------↓3.route_Combination↓-------------------------")
+    print("---------------------------↓3.route_Combination and feeder_port↓-------------------------")
     maxTotalLength = 50000  # 最大路線長
-    minTotalLength = 10000  # 最小路線長
+    minTotalLength = 5000  # 最小路線長
     totalLengthSpan = 1000  # 路線候補を作る間隔
-    capa = 50
-    distance_limit = 5000
-    capacity_cost = 100000
+    distance_limit = 5000 # feederまでのアクセス距離
+    max_port_capacity = 99999 # feederポートの容量
+    max_port_count = 5 #feederポート数
 
     for length in range(minTotalLength, maxTotalLength + totalLengthSpan, totalLengthSpan):
-        selectNode, selectRoute, total_length, model, selectHubs, flow = calcBestRouteCombination(N, routes_node, routes_length, length, main_hub, F)
+        selectNode, selectRoute, total_length, model, selectHubs, flow = calcBestRouteCombination(N, routes_node, routes_length, length, F, main_hub)
         selectNode_int=[]
         for i in selectNode:
             selectNode_int.append(int(i))
 
-        #hubs, select_node_hubs, flow_feeder, flow_dist, depot_capacity, max_capacity, avg_capacity = feeder_depot.select_feeder_hub_min_allocation(N, D, F, selectNode_int, distance_limit, capacity_cost)
-        hubs, select_node_hubs, flow_feeder, flow_dist, depot_capacity, max_capacity, avg_capacity = feeder_depot.select_feeder_hub_max_flow(N, D, F, selectNode_int, distance_limit)
+        hubs, select_node_hubs, flow_feeder, flow_dist, depot_capacity, max_capacity, avg_capacity = feeder_depot.select_feeder_hub_max_flow(N, D, F, selectNode_int,
+                                                                                                                                             max_port_capacity=max_port_capacity,
+                                                                                                                                             max_port_count=max_port_count,
+                                                                                                                                             distance_limit=distance_limit)
 
         if id is not None:
             totalLengthList[count] = length
