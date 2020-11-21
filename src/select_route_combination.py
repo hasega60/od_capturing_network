@@ -347,13 +347,12 @@ if __name__ == '__main__':
             avg_capacities[count] = avg_capacity
             count += 1
 
-            # TODO 都度出力
-            outputRouteCombination(totalLengthList, routes_id_b, routes_hubs_b, routes_node_b, routes_length_b,
-                                   routes_objVal_b, routes_CalcTime_b, feeder_hubs, feeder_hub_count,select_feeder_hubs,
-                                   total_feeder_distance, flow_feeders, depot_capacities, max_capacities, avg_capacities,
-                                   f"{base_dir}/route_combination.csv", f"{base_dir}/route_combination_summary.csv",
-                                   f"{base_dir}/route_node.csv", f"{base_dir}/feeder_hub_select.csv"
-                                   )
+    outputRouteCombination(totalLengthList, routes_id_b, routes_hubs_b, routes_node_b, routes_length_b,
+                           routes_objVal_b, routes_CalcTime_b, feeder_hubs, feeder_hub_count,select_feeder_hubs,
+                           total_feeder_distance, flow_feeders, depot_capacities, max_capacities, avg_capacities,
+                           f"{base_dir}/route_combination.csv", f"{base_dir}/route_combination_summary.csv",
+                           f"{base_dir}/route_node.csv", f"{base_dir}/feeder_hub_select.csv"
+                           )
 
     #for alfa in alfa_list:
     #    selectNode, selectRoute, length, model_brc, selectHubs = calcRouteCombination_useFeeder(N, E, D, F, routes_node, routes_length, mainNode, alfa)
