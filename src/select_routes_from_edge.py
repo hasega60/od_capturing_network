@@ -287,9 +287,8 @@ def createRoute_loop_Flow(N, D, F, s, maxdist):
 
     return selectN, selectE, routeLength, model_loop
 
-
 def createRouteList(N, E, D, F, G, E_id, listTerminal, minLength, output_path, maxLength=30000,
-                    span=5000):
+                    span=5000, max_detour_ratio=1.5, ratio_span=0.05):
     routes_condition, routes_node, routes_edge, routes_length, routes_objVal, routes_CalcTime = {}, {}, {}, {}, {}, {}
     count = 0
     print("createRoute:" + str(listTerminal))
@@ -346,8 +345,10 @@ def createRouteList(N, E, D, F, G, E_id, listTerminal, minLength, output_path, m
             timelimit=False
 
             # hub間路線網パターン作成
-
-            for length in range(minLength, maxLength+1, span):
+            to_int=1000
+            ratio_list = [i / to_int for i in range(int((1+ratio_span)*to_int), int(max_detour_ratio*to_int), int(ratio_span*to_int))]
+            for ratio in ratio_list:
+                length = shortestLength * ratio
                 #timelimitだったら次の組み合わせへ
                 if timelimit:
                     continue
@@ -355,10 +356,10 @@ def createRouteList(N, E, D, F, G, E_id, listTerminal, minLength, output_path, m
                 model = None
                 # 最大路線長を超えないパターンを作成
                 if shortestLength < length:
-                    print("solve:" + str(hub[0]) + ", " + str(hub[1]) + "," + str(length))
+                    print("solve:" + str(hub[0]) + ", " + str(hub[1]) + "," + str(ratio))
                     selectE, routeLength, model = createRoute_maxWeight(N, E, hub[0], hub[1], length, F)
                     routes_condition[count] = str(hub[0]) + "_" + str(hub[1]) + "_" + str(
-                        length) + "_" + str(
+                        ratio) + "_" + str(
                         "F")
                     if selectE is not None:
                         selectN = edgeConvertnodes(selectE)

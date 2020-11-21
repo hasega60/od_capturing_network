@@ -118,7 +118,7 @@ def outIIS(model):
 
 if __name__ == '__main__':
 
-    base_dir = "../data/kawagoe_example"
+    base_dir = "../data/moriya"
     N, E, D, F, G, E_id = load_data(f"{base_dir}/node.csv",
                               f"{base_dir}/edge.csv",
                               f"{base_dir}/distance_matrix.csv",
@@ -147,24 +147,13 @@ if __name__ == '__main__':
     maxLength = 15000
     span = 2500
     alfa = 1
+    max_detour_ratio = 1.5
+    ratio_span=0.05
 
 
     # 路線パターン作成
     listTerminal = hub.createTerminalCombinationNoLoop(hubs, D, minLength)
-    # 路線パターン作成
     output_list=f"{base_dir}/route_list.csv"
     routes_condition, routes_node, routes_edge, routes_length, routes_objVal, routes_CalcTime = route.createRouteList(N, E, D, F, G, E_id,
-                                                                                               listTerminal, minLength, output_list,maxLength, span)
-
-    print("---------------------------↓3.route_Combination↓-------------------------")
-
-    alfa_list = [2, 10, 100, 1000]
-    beta_ratio = 4
-    for alfa in alfa_list:
-        selectNodes, id, routeLength, model_b, selectHubs = combination.calcRouteCombination_useFeeder2(N, E, D, F,routes_node,
-                                                                                            routes_length,
-                                                                                            alfa, alfa*beta_ratio)
-    route.outputRouteList(routes_condition, routes_node, routes_edge, routes_length,
-                    routes_objVal, routes_CalcTime, output_list)
-
+                                                                                               listTerminal, minLength, output_list,maxLength, span, max_detour_ratio, ratio_span)
 
